@@ -7,8 +7,11 @@ db = None
 events_collection = None
 freeze_log_collection = None
 thresholds_collection = None
+frozen_users_collection = None
+
 _in_memory_events = []
 _in_memory_freeze_log = []
+_in_memory_frozen_users = {}
 _in_memory_thresholds = {
     "cluster_size": config.CLUSTER_SIZE_THRESHOLD,
     "similarity": config.SIMILARITY_THRESHOLD,
@@ -16,15 +19,17 @@ _in_memory_thresholds = {
 }
 
 def _get_db():
-    global client, db, events_collection, freeze_log_collection, thresholds_collection
+    global client, db, events_collection, freeze_log_collection, thresholds_collection, frozen_users_collection
     if db is None:
         try:
-            client = MongoClient(config.MONGO_URI, serverSelectionTimeoutMS=2000)
+            client = MongoClient(config.MONGO_URI, serverSelectionTimeoutMS=5000)
             client.admin.command('ping')
             db = client[config.MONGO_DB]
             events_collection = db["login_events"]
             freeze_log_collection = db["freeze_log"]
             thresholds_collection = db["thresholds"]
+            frozen_users_collection = db["frozen_users"]
+            print("✔ MongoDB Atlas connected")
         except Exception as e:
             print(f"MongoDB connection failed, using in-memory storage: {e}")
             db = False
@@ -46,7 +51,7 @@ def get_recent_events(limit: int = 50):
             return list(events_collection.find({}, {"_id": 0}).sort("created_at", -1).limit(limit))
         except:
             pass
-    return _in_memory_events[-limit:]
+    return list(reversed(_in_memory_events[-limit:]))
 
 def get_user_events(user_id: str):
     if _get_db():
@@ -87,14 +92,61 @@ def log_unfreeze_action(user_id: str):
     _in_memory_freeze_log.append(entry)
     return True
 
-def get_freeze_log(limit: int = 50):
+def get_freeze_log(limit: int = 100):
     if _get_db():
         try:
             return list(freeze_log_collection.find({}, {"_id": 0}).sort("timestamp", -1).limit(limit))
         except:
             pass
-    return _in_memory_freeze_log[-limit:]
+    return list(reversed(_in_memory_freeze_log[-limit:]))
 
+# ── Frozen Users (persistent store, separate from freeze_log) ─────────────────
+def mark_frozen(user_id: str, risk_score: float, reason: str, cluster_id: str = "", ip_address: str = ""):
+    entry = {
+        "user_id": user_id,
+        "risk_score": risk_score,
+        "reason": reason,
+        "cluster_id": cluster_id or "",
+        "ip_address": ip_address or "",
+        "frozen_at": datetime.utcnow(),
+        "status": "frozen"
+    }
+    if _get_db():
+        try:
+            frozen_users_collection.update_one(
+                {"user_id": user_id},
+                {"$set": entry},
+                upsert=True
+            )
+            return True
+        except:
+            pass
+    _in_memory_frozen_users[user_id] = entry
+    return True
+
+def mark_unfrozen(user_id: str):
+    if _get_db():
+        try:
+            frozen_users_collection.update_one(
+                {"user_id": user_id},
+                {"$set": {"status": "unfrozen", "unfrozen_at": datetime.utcnow()}}
+            )
+            return True
+        except:
+            pass
+    if user_id in _in_memory_frozen_users:
+        _in_memory_frozen_users[user_id]["status"] = "unfrozen"
+    return True
+
+def get_frozen_users():
+    if _get_db():
+        try:
+            return list(frozen_users_collection.find({"status": "frozen"}, {"_id": 0}).sort("frozen_at", -1))
+        except:
+            pass
+    return [v for v in _in_memory_frozen_users.values() if v.get("status") == "frozen"]
+
+# ── Thresholds ────────────────────────────────────────────────────────────────
 def get_thresholds():
     if _get_db():
         try:

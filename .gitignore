@@ -1,0 +1,63 @@
+# ─── Environment / Secrets ───────────────────────────────────────────────────
+.env
+.env.local
+.env.*.local
+*.pem
+*.key
+
+# ─── Python ──────────────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg
+*.egg-info/
+dist/
+build/
+eggs/
+wheels/
+*.whl
+*.pyd
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Virtual environments
+venv/
+.venv/
+env/
+ENV/
+.virtualenv/
+
+# ─── ML Model artifacts ──────────────────────────────────────────────────────
+*.pkl
+*.pickle
+*.joblib
+*.h5
+*.pt
+*.ckpt
+
+# ─── Databases / Local data ──────────────────────────────────────────────────
+*.db
+*.sqlite3
+*.dump
+
+# ─── IDE / Editor ────────────────────────────────────────────────────────────
+.idea/
+.vscode/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+.DS_Store
+Thumbs.db
+
+# ─── Logs ────────────────────────────────────────────────────────────────────
+*.log
+logs/
+
+# ─── Coverage / Testing ──────────────────────────────────────────────────────
+.coverage
+htmlcov/
+.pytest_cache/
+.tox/

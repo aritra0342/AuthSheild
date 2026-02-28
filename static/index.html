@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AuthShield AI Dashboard</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>AuthShield AI</h1>
+            <span class="status" id="connection-status">Connecting...</span>
+        </header>
+
+        <nav class="tabs">
+            <button class="tab active" data-tab="events">Live Events</button>
+            <button class="tab" data-tab="clusters">Clusters</button>
+            <button class="tab" data-tab="flagged">Flagged Users</button>
+            <button class="tab" data-tab="freeze-log">Freeze Log</button>
+            <button class="tab" data-tab="blockchain">Blockchain</button>
+            <button class="tab" data-tab="test">Test</button>
+        </nav>
+
+        <div class="thresholds-bar">
+            <label>Cluster Size: <input type="number" id="threshold-cluster" value="5" min="1"></label>
+            <label>Similarity: <input type="number" id="threshold-similarity" value="0.85" step="0.05" min="0" max="1"></label>
+            <label>Risk Score: <input type="number" id="threshold-risk" value="0.7" step="0.05" min="0" max="1"></label>
+            <button id="save-thresholds">Save</button>
+            <button id="check-clusters" class="danger">Check & Freeze</button>
+        </div>
+
+        <main>
+            <section id="events" class="tab-content active">
+                <div class="panel">
+                    <h2>Recent Login Events</h2>
+                    <button id="refresh-events">Refresh</button>
+                </div>
+                <table id="events-table">
+                    <thead>
+                        <tr>
+                            <th>User ID</th>
+                            <th>IP Address</th>
+                            <th>Risk Score</th>
+                            <th>Entropy</th>
+                            <th>Status</th>
+                            <th>Time</th>
+                        </tr>
+                    </thead>
+                    <tbody></tbody>
+                </table>
+            </section>
+
+            <section id="clusters" class="tab-content">
+                <div class="panel">
+                    <h2>Detected Clusters</h2>
+                    <button id="refresh-clusters">Refresh</button>
+                </div>
+                <div id="clusters-container"></div>
+            </section>
+
+            <section id="flagged" class="tab-content">
+                <div class="panel">
+                    <h2>Flagged Users</h2>
+                    <button id="refresh-flagged">Refresh</button>
+                </div>
+                <table id="flagged-table">
+                    <thead>
+                        <tr>
+                            <th>User ID</th>
+                            <th>Risk Score</th>
+                            <th>Entropy</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody></tbody>
+                </table>
+            </section>
+
+            <section id="freeze-log" class="tab-content">
+                <div class="panel">
+                    <h2>Freeze History</h2>
+                    <button id="refresh-freeze-log">Refresh</button>
+                </div>
+                <table id="freeze-log-table">
+                    <thead>
+                        <tr>
+                            <th>User ID</th>
+                            <th>Action</th>
+                            <th>Reason</th>
+                            <th>Risk Score</th>
+                            <th>Time</th>
+                        </tr>
+                    </thead>
+                    <tbody></tbody>
+                </table>
+            </section>
+
+            <section id="blockchain" class="tab-content">
+                <div class="blockchain-grid">
+                    <div class="blockchain-panel">
+                        <h2>Algorand Status</h2>
+                        <div id="blockchain-status" class="status-card">
+                            <p>Network: <span id="bc-network">-</span></p>
+                            <p>Configured: <span id="bc-configured">-</span></p>
+                            <p>Address: <span id="bc-address">-</span></p>
+                            <p>Balance: <span id="bc-balance">-</span> ALGO</p>
+                        </div>
+                        <button id="refresh-blockchain" class="primary">Refresh Status</button>
+                    </div>
+
+                    <div class="blockchain-panel">
+                        <h2>Generate TestNet Wallet</h2>
+                        <p class="hint">Generate a new wallet for testing. Fund it with test ALGO from the faucet.</p>
+                        <button id="generate-wallet" class="primary">Generate New Wallet</button>
+                        <pre id="wallet-result"></pre>
+                    </div>
+                </div>
+
+                <div class="blockchain-actions">
+                    <h2>Blockchain Actions</h2>
+                    <div class="action-grid">
+                        <div class="action-card">
+                            <h3>Log Freeze to Blockchain</h3>
+                            <input type="text" id="bc-freeze-user" placeholder="User ID">
+                            <input type="number" id="bc-freeze-risk" placeholder="Risk Score" step="0.01" value="0.85">
+                            <button id="bc-log-freeze" class="danger">Log Freeze</button>
+                        </div>
+                        <div class="action-card">
+                            <h3>Mint Verified Badge (NFT)</h3>
+                            <input type="text" id="bc-badge-user" placeholder="User ID">
+                            <input type="number" id="bc-badge-risk" placeholder="Risk Score (<0.3)" step="0.01" value="0.15">
+                            <button id="bc-mint-badge" class="success">Mint Badge</button>
+                        </div>
+                        <div class="action-card">
+                            <h3>Update Reputation</h3>
+                            <input type="text" id="bc-rep-user" placeholder="User ID">
+                            <input type="number" id="bc-rep-risk" placeholder="Risk Score" step="0.01" value="0.25">
+                            <button id="bc-update-rep">Update Reputation</button>
+                        </div>
+                        <div class="action-card">
+                            <h3>Freeze + Log to Blockchain</h3>
+                            <input type="text" id="bc-full-freeze-user" placeholder="User ID">
+                            <button id="bc-full-freeze" class="danger">Freeze & Log</button>
+                        </div>
+                    </div>
+                    <pre id="blockchain-result"></pre>
+                </div>
+
+                <div class="blockchain-explainer">
+                    <h2>How It Works</h2>
+                    <div class="feature-grid">
+                        <div class="feature">
+                            <h4>Immutable Freeze Log</h4>
+                            <p>Every freeze action is recorded on Algorand blockchain for audit transparency.</p>
+                        </div>
+                        <div class="feature">
+                            <h4>NFT Badges</h4>
+                            <p>Users with low risk scores get soulbound NFT badges as verified credentials.</p>
+                        </div>
+                        <div class="feature">
+                            <h4>Reputation Tokens</h4>
+                            <p>Trust scores are tracked on-chain for cross-platform portability.</p>
+                        </div>
+                        <div class="feature">
+                            <h4>Cross-Campus Sharing</h4>
+                            <p>Share threat intelligence between campuses via blockchain.</p>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <section id="test" class="tab-content">
+                <div class="test-grid">
+                    <div class="test-panel">
+                        <h2>Simulate Login Event</h2>
+                        <form id="simulate-form">
+                            <div class="form-group">
+                                <label>User ID</label>
+                                <input type="text" id="sim-user-id" placeholder="user_123" required>
+                            </div>
+                            <div class="form-group">
+                                <label>IP Address</label>
+                                <input type="text" id="sim-ip" placeholder="192.168.1.1" value="192.168.1.1">
+                            </div>
+                            <div class="form-group">
+                                <label>User Agent</label>
+                                <input type="text" id="sim-ua" placeholder="Mozilla/5.0..." value="Mozilla/5.0 Chrome/120.0">
+                            </div>
+                            <div class="form-group">
+                                <label>Screen Resolution</label>
+                                <input type="text" id="sim-screen" placeholder="1920x1080" value="1920x1080">
+                            </div>
+                            <div class="form-group">
+                                <label>Timezone</label>
+                                <input type="text" id="sim-tz" placeholder="UTC+5" value="UTC+5">
+                            </div>
+                            <div class="form-group">
+                                <label>WebGL Hash</label>
+                                <input type="text" id="sim-webgl" placeholder="abc123">
+                            </div>
+                            <div class="form-group">
+                                <label>Canvas Hash</label>
+                                <input type="text" id="sim-canvas" placeholder="def456">
+                            </div>
+                            <div class="form-group">
+                                <label>Typing Latency (comma-separated)</label>
+                                <input type="text" id="sim-typing" placeholder="120,150,130,140">
+                            </div>
+                            <button type="submit" class="primary">Simulate Login</button>
+                        </form>
+                    </div>
+
+                    <div class="result-panel">
+                        <h2>Result</h2>
+                        <pre id="simulate-result">Click "Simulate Login" to see results</pre>
+                    </div>
+                </div>
+
+                <div class="test-actions">
+                    <h2>Manual Actions</h2>
+                    <div class="action-row">
+                        <input type="text" id="action-user-id" placeholder="Enter User ID">
+                        <button id="btn-freeze" class="danger">Freeze User</button>
+                        <button id="btn-unfreeze" class="success">Unfreeze User</button>
+                    </div>
+                    <pre id="action-result"></pre>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <script src="/static/app.js"></script>
+</body>
+</html>

@@ -23,10 +23,7 @@ class FreezeLedger:
                 "type": "FREEZE",
                 "user_id": user_id,
                 "risk_score": risk_score,
-                "cluster_id": cluster_id,
-                "reason": reason,
-                "timestamp": datetime.utcnow().isoformat(),
-                "system": "AuthShield AI"
+                "timestamp": datetime.utcnow().isoformat()
             }
             
             note = json.dumps(note_data).encode()

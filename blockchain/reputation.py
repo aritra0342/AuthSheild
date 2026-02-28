@@ -95,18 +95,8 @@ class ReputationManager:
             "indexer_query": f"/v2/transactions?note-prefix={user_id}"
         }
     
-    def calculate_trust_score(self, risk_score: float, login_count: int,
-                              days_active: int) -> float:
-        base_trust = 100
-        
-        risk_penalty = risk_score * 50
-        
-        activity_bonus = min(login_count * 0.5, 20)
-        
-        longevity_bonus = min(days_active * 0.1, 10)
-        
-        trust_score = base_trust - risk_penalty + activity_bonus + longevity_bonus
-        
+    def calculate_trust_score(self, risk_score: float) -> float:
+        trust_score = 100 - (risk_score * 50)
         return max(0, min(100, trust_score))
 
 

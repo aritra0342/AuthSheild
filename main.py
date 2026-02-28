@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException, Depends
+from fastapi import FastAPI, HTTPException, Depends, BackgroundTasks
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
@@ -22,6 +22,23 @@ from config import config
 
 from blockchain import AlgorandClient, FreezeLedger, NFTBadge, ReputationManager
 from blockchain.algorand_client import generate_testnet_account
+
+async def process_blockchain_actions(user_id: str, risk_score: float):
+    # 1. Reputation update: trust_score = 100 - (risk_score * 50)
+    trust_score = reputation_manager.calculate_trust_score(risk_score)
+    rep_res = reputation_manager.update_reputation(user_id, algorand_client.address, risk_score, trust_score)
+    if rep_res.get("success"):
+        print(f"[{user_id}] Reputation logged to blockchain. Tx: {rep_res.get('txid')}")
+    else:
+        print(f"[{user_id}] Reputation log failed: {rep_res.get('error')}")
+
+    # 2. NFT Badge minting for Verified Users (risk < 0.3)
+    if risk_score < 0.3:
+        nft_res = nft_badge.mint_badge(user_id, algorand_client.address, risk_score)
+        if nft_res.get("success"):
+            print(f"[{user_id}] NFT Badge minted successfully! Tx: {nft_res.get('txid')}")
+        else:
+            print(f"[{user_id}] NFT mint failed: {nft_res.get('error')}")
 
 algorand_client = AlgorandClient()
 freeze_ledger = FreezeLedger()
@@ -293,7 +310,7 @@ async def calculate_risk_api(event: LoginEvent):
     return {**fp, **risk_result}
 
 @app.post("/api/simulate")
-async def simulate_login(event: LoginEvent):
+async def simulate_login(event: LoginEvent, background_tasks: BackgroundTasks):
     try:
         event_dict = event.dict()
         if not event_dict.get("login_timestamp"):
@@ -338,6 +355,8 @@ async def simulate_login(event: LoginEvent):
             graph.update_user_risk(event.user_id, risk_result["risk_score"])
         except Exception as e:
             print(f"Graph update error: {e}")
+            
+        background_tasks.add_task(process_blockchain_actions, event.user_id, risk_result["risk_score"])
         return event_data
     except Exception as e:
         import traceback; traceback.print_exc()
@@ -357,7 +376,7 @@ BOT_UA     = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/88.0.4324.150 Saf
 BOT_SUBNET = "45.152.66"
 
 @app.post("/api/demo/run-attack")
-async def demo_run_attack():
+async def demo_run_attack(background_tasks: BackgroundTasks):
     """Seed ML model, then simulate 8 legit + 12 bot logins. Returns all events."""
     _seed_model()
     results = {"legit": [], "bots": []}
@@ -376,7 +395,7 @@ async def demo_run_attack():
             screen_resolution=random.choice(LEGIT_RES),
             typing_latency_array=typing
         )
-        data = await simulate_login(ev)
+        data = await simulate_login(ev, background_tasks)
         results["legit"].append(data)
 
     # Phase 2: bot attack — same subnet, same UA, robotic typing
@@ -393,7 +412,7 @@ async def demo_run_attack():
             screen_resolution="1024x768",
             typing_latency_array=typing
         )
-        data = await simulate_login(ev)
+        data = await simulate_login(ev, background_tasks)
         results["bots"].append(data)
 
     return {
@@ -498,6 +517,7 @@ async def freeze_user_endpoint(user_id: str):
     if result["success"]:
         db.log_freeze_action(user_id, "manual_freeze", 1.0)
         db.mark_frozen(user_id, 1.0, "manual_freeze")
+        freeze_ledger.log_freeze(user_id, 1.0, None, "manual_freeze")
         try:
             graph.clear_flag(user_id)
         except:
@@ -525,13 +545,14 @@ async def check_clusters():
             if result["success"]:
                 db.log_freeze_action(user["user_id"], "auto_cluster_freeze", user["risk_score"], str(user.get("cluster_size", 0)))
                 db.mark_frozen(user["user_id"], user["risk_score"], "auto_cluster_freeze")
+                freeze_ledger.log_freeze(user["user_id"], user.get("risk_score", 1.0), str(user.get("cluster_size", "")), "auto_cluster_freeze")
                 frozen.append(user["user_id"])
         return {"flagged_count": len(flagged), "frozen_count": len(frozen), "frozen_users": frozen}
     except Exception as e:
         return {"error": str(e)}
 
 @app.post("/webhook/auth0")
-async def auth0_webhook(payload: dict):
+async def auth0_webhook(payload: dict, background_tasks: BackgroundTasks):
     user_id = payload.get("user_id") or payload.get("sub", "")
     event = LoginEvent(
         user_id=user_id,
@@ -544,7 +565,7 @@ async def auth0_webhook(payload: dict):
         login_timestamp=payload.get("login_timestamp"),
         typing_latency_array=payload.get("typing_latency_array", [])
     )
-    return await simulate_login(event)
+    return await simulate_login(event, background_tasks)
 
 @app.on_event("startup")
 async def startup():

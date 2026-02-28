@@ -66,14 +66,6 @@ async def get_flagged():
     flagged = db.get_flagged_users()
     return flagged
 
-@app.get("/api/freeze-log")
-async def get_freeze_log():
-    logs = db.get_freeze_log()
-    for log in logs:
-        if "timestamp" in log:
-            log["timestamp"] = log["timestamp"].isoformat()
-    return logs
-
 @app.get("/api/thresholds")
 async def get_thresholds():
     return db.get_thresholds()
@@ -237,6 +229,14 @@ async def unfreeze_user_endpoint(user_id: str):
         db.log_unfreeze_action(user_id)
     
     return result
+
+@app.get("/api/freeze-log")
+async def get_freeze_log():
+    logs = db.get_freeze_log()
+    for log in logs:
+        if "timestamp" in log:
+            log["timestamp"] = log["timestamp"].isoformat() if hasattr(log["timestamp"], 'isoformat') else str(log["timestamp"])
+    return logs
 
 @app.post("/api/check-clusters")
 async def check_clusters():

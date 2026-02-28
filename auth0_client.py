@@ -5,7 +5,13 @@ from config import config
 
 _token_cache = {"token": None, "expires_at": 0}
 
+def is_mock_mode() -> bool:
+    return config.MOCK_MODE
+
 async def get_auth0_token() -> str:
+    if is_mock_mode():
+        return "mock_token_12345"
+    
     if _token_cache["token"] and _token_cache["expires_at"] > time.time() + 60:
         return _token_cache["token"]
     
@@ -31,6 +37,15 @@ async def get_auth0_token() -> str:
         return _token_cache["token"]
 
 async def freeze_user(user_id: str, reason: str = "cluster_flagged") -> Dict:
+    if is_mock_mode():
+        print(f"[MOCK] Freezing user: {user_id} (reason: {reason})")
+        return {
+            "success": True,
+            "user_id": user_id,
+            "mock": True,
+            "message": f"User {user_id} would be frozen (mock mode)"
+        }
+    
     token = await get_auth0_token()
     
     async with httpx.AsyncClient() as client:
@@ -69,6 +84,15 @@ async def freeze_user(user_id: str, reason: str = "cluster_flagged") -> Dict:
         return {"success": False, "error": "Max retries exceeded"}
 
 async def unfreeze_user(user_id: str) -> Dict:
+    if is_mock_mode():
+        print(f"[MOCK] Unfreezing user: {user_id}")
+        return {
+            "success": True,
+            "user_id": user_id,
+            "mock": True,
+            "message": f"User {user_id} would be unfrozen (mock mode)"
+        }
+    
     token = await get_auth0_token()
     
     async with httpx.AsyncClient() as client:
@@ -106,6 +130,14 @@ async def unfreeze_user(user_id: str) -> Dict:
         return {"success": False, "error": "Max retries exceeded"}
 
 async def get_user(user_id: str) -> Optional[Dict]:
+    if is_mock_mode():
+        return {
+            "user_id": user_id,
+            "email": f"{user_id}@example.com",
+            "blocked": False,
+            "mock": True
+        }
+    
     token = await get_auth0_token()
     
     async with httpx.AsyncClient() as client:
@@ -122,6 +154,13 @@ async def get_user(user_id: str) -> Optional[Dict]:
         return None
 
 async def get_all_users() -> list:
+    if is_mock_mode():
+        return [
+            {"user_id": "mock_user_1", "email": "mock1@example.com", "blocked": False},
+            {"user_id": "mock_user_2", "email": "mock2@example.com", "blocked": False},
+            {"user_id": "mock_user_3", "email": "mock3@example.com", "blocked": False}
+        ]
+    
     token = await get_auth0_token()
     
     async with httpx.AsyncClient() as client:

@@ -21,5 +21,6 @@ class Config:
     RISK_SCORE_THRESHOLD = float(os.getenv("RISK_SCORE_THRESHOLD", "0.7"))
     
     AUTOENCODER_THRESHOLD = float(os.getenv("AUTOENCODER_THRESHOLD", "0.1"))
+    MOCK_MODE = os.getenv("MOCK_MODE", "false").lower() == "true"
 
 config = Config()

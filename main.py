@@ -36,15 +36,18 @@ STATIC_DIR = os.path.join(BASE_DIR, "static")
 # ── Auth helpers ──────────────────────────────────────────────────────────────
 security = HTTPBearer(auto_error=False)
 
-def create_token(username: str) -> str:
-    payload = {"sub": username, "iat": int(time.time()), "exp": int(time.time()) + 86400}
+def create_token(username: str, remember_me: bool = False) -> str:
+    # remember_me → 30 days; normal → 24 hours
+    expiry = 30 * 86400 if remember_me else 86400
+    payload = {"sub": username, "iat": int(time.time()), "exp": int(time.time()) + expiry}
     return jwt.encode(payload, config.JWT_SECRET, algorithm="HS256")
 
 def verify_token(credentials: HTTPAuthorizationCredentials = Depends(security)):
     if credentials is None:
         raise HTTPException(status_code=401, detail="Not authenticated")
     try:
-        jwt.decode(credentials.credentials, config.JWT_SECRET, algorithms=["HS256"])
+        data = jwt.decode(credentials.credentials, config.JWT_SECRET, algorithms=["HS256"])
+        return data
     except jwt.InvalidTokenError:
         raise HTTPException(status_code=401, detail="Invalid or expired token")
 
@@ -52,6 +55,14 @@ def verify_token(credentials: HTTPAuthorizationCredentials = Depends(security)):
 class LoginRequest(BaseModel):
     username: str
     password: str
+    remember_me: Optional[bool] = False
+
+class RegisterRequest(BaseModel):
+    username: str
+    email: str
+    full_name: str
+    password: str
+    role: Optional[str] = "analyst"  # analyst | admin | viewer
 
 class LoginEvent(BaseModel):
     user_id: str
@@ -140,10 +151,68 @@ async def dashboard():
 
 @app.post("/api/login")
 async def login(req: LoginRequest):
-    if req.username == config.ADMIN_USERNAME and req.password == config.ADMIN_PASSWORD:
-        token = create_token(req.username)
-        return {"token": token, "username": req.username}
-    raise HTTPException(status_code=401, detail="Invalid credentials")
+    user = db.authenticate_user(req.username, req.password)
+    if user:
+        token = create_token(user["username"], req.remember_me or False)
+        return {
+            "token":     token,
+            "username":  user["username"],
+            "full_name": user.get("full_name", user["username"]),
+            "role":      user.get("role", "analyst"),
+            "email":     user.get("email", ""),
+            "remember_me": req.remember_me,
+        }
+    raise HTTPException(status_code=401, detail="Invalid username or password")
+
+@app.post("/api/register")
+async def register(req: RegisterRequest):
+    # Role guard: only admin and analyst allowed via signup
+    allowed_roles = {"analyst", "viewer", "admin"}
+    role = req.role if req.role in allowed_roles else "analyst"
+
+    # Basic validation
+    if len(req.username) < 3:
+        raise HTTPException(status_code=400, detail="Username must be at least 3 characters")
+    if len(req.password) < 6:
+        raise HTTPException(status_code=400, detail="Password must be at least 6 characters")
+    if not req.full_name.strip():
+        raise HTTPException(status_code=400, detail="Full name is required")
+
+    try:
+        user = db.create_user(
+            username=req.username,
+            email=req.email,
+            full_name=req.full_name,
+            password=req.password,
+            role=role
+        )
+        token = create_token(user["username"])
+        return {
+            "success":  True,
+            "token":    token,
+            "username": user["username"],
+            "full_name":user["full_name"],
+            "role":     user["role"],
+            "email":    user["email"],
+        }
+    except ValueError as e:
+        raise HTTPException(status_code=409, detail=str(e))
+
+@app.get("/api/me")
+async def get_me(creds: dict = Depends(verify_token)):
+    username = creds.get("sub", "")
+    user = db.find_user(username)
+    if user:
+        return {k: v for k, v in user.items() if k != "password"}
+    # ENV admin fallback
+    if username == config.ADMIN_USERNAME:
+        return {"username": config.ADMIN_USERNAME, "full_name": "System Administrator",
+                "role": "admin", "email": "admin@authshield.local"}
+    raise HTTPException(status_code=404, detail="User not found")
+
+@app.get("/api/users")
+async def list_users(creds: dict = Depends(verify_token)):
+    return db.get_all_users()
 
 @app.get("/api/health")
 async def health():
